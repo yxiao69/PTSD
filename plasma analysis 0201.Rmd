@@ -1,0 +1,303 @@
+---
+title: "Plasma Analysis on PTSD Project"
+author: "YI XIAO"
+date: "1/17/2019"
+output: html_document
+ 
+---
+
+```{r}
+plasma=read.csv('/Users/xiaoyi/Documents/2018Fall/Clinical/PTSD/plasma.csv',na.strings=c("","NA"))
+#?blood pressure have many columns,skip it for now
+grep("pressure",colnames(plasma),value = TRUE)
+col=c("id","Timepoints","PTSDorNot","Treatment", "Batch_A","Batch_S", "age" , "biol_sex" , "ethnicity_id", "bmi", "education", "marital_status", grep("Mean",colnames(plasma),value = TRUE))
+#prepare data
+dat1=plasma[,col]
+colnames(dat1)
+biom=grep("Mean",colnames(plasma),value = TRUE)
+options(scipen=10000)
+#
+#RECODE  the 1,0 into PTSD active 
+dat1$Group=ifelse(dat1$PTSDorNot==1,'PTSD','non-PTSD')
+dat1$Treatment_new=ifelse(dat1$Treatment==1,'active','sham')
+dat1$PTSDorNot=factor(dat1$PTSDorNot)
+#col1,col2 combination to split data 
+```
+## Descriptive Table 
+```{r}
+library(table1)
+library(dplyr)
+library(knitr)
+#check demographic variable for each subject (not for each observaion)
+dat1_subject=dat1[!duplicated(dat1$id), ]
+table1::table1(~age+biol_sex+PTSDorNot+ethnicity_id+bmi+education+marital_status |Treatment_new,data=dat1_subject)
+```
+
+```{r}
+#check biomarker baseline level for active/sham
+dat1_baseline=dat1%>%filter(Timepoints==0)
+
+table1::table1(~BDNF_Mean+IFNgamma_Mean+IL1beta_Mean+IL2_Mean+IL6_Mean+TNFa_Mean+Ghrelin_Mean+IL12p70_Mean+IL13_Mean+IL22_Mean+IL5_Mean+MIF_Mean |Treatment_new,data=dat1_baseline)
+```
+## check missing patterns
+```{r}
+ library(visdat)
+vis_miss(dat1)
+```
+
+##  Distribution plots for the biomarkers 
+```{r}
+
+histbio_sep=function(biom,data,col1,col2){
+  dat=NULL
+  for (j in na.omit(unique(data[[col1]]))){
+    for (h in na.omit(unique(data[[col2]]))){
+      gpname=paste0(j,h)      
+      gp=data.frame(subset(data,(data[[col1]]==j&data[[col2]]==h))[[biom]],gpname=paste0(j,h))
+      colnames(gp)=c('biom','gpname')
+      #assign(gpname,gp)
+      dat=rbind(dat,gp)
+    }
+  }
+  #allname=apply(expand.grid(c('PTSD','non-PTSD'), c('active','sham')), 1, function(x) paste0(x[1], x[2])) 
+  
+  #aa=mget(allname)
+  #aaa=do.call(qpcR:::cbind.na,aa)
+  #pdf(paste0('group_hist_',biom,'.pdf'))
+  library(ggplot2)
+  par(mfrow=c(3,4))
+  print(ggplot(dat, aes(biom,fill=gpname)) + 
+          geom_histogram(alpha = 0.5, position = 'identity')+ggtitle(paste0('Histogram of ',biom)))
+  #dev.off()
+  
+}
+
+
+
+for( i in biom){
+  histbio_sep(i,dat1,col1 = 'Group',col2='Treatment_new')
+}
+
+```
+
+## The Frequency table group by ID 
+
+
+```{r}
+
+
+#how many id have 1,2... obs 
+dat1%>% group_by(`id`)%>% summarise(Freq=n())%>%arrange(Freq)%>% group_by(Freq)%>% summarise(number_id=n())
+# the obs for each subject
+dat1%>% group_by(`id`)%>% summarise(Obs=n())%>%arrange(Obs)
+```
+
+```{r eval=FALSE, include=FALSE}
+library(dplyr)
+#table 2 
+
+
+#table 1
+freqtable=function(data,batch,col1,col2){
+data$ID_Point=apply(data[ ,c(col1,col2) ] , 1 , paste , collapse = "_")
+table1=data %>% group_by(`ID_Point`)%>%
+  summarise(distinct= n_distinct(UQ(as.name(batch))))%>%group_by(distinct)%>% summarise(Freq=n())
+table2=data %>%
+  group_by(UQ(as.name(batch))) %>%
+  summarise(distinct= n_distinct(UQ(as.name(col1))))#id
+freq1 =data%>% group_by(UQ(as.name(col1)),UQ(as.name(batch))) %>% summarise(Freq=n())
+freq2=data %>% group_by(UQ(as.name(batch)),UQ(as.name(col1)))%>% summarise(Freq=n())
+
+#write.csv(table1,file=paste0(batch,'_freqtable1.csv'))
+#write.csv(table2,file=paste0(batch,'_freqtable2.csv'))
+#write.csv(freq1,file=paste0(batch,'_freq1.csv'))
+#write.csv(freq2,file=paste0(batch,'_freq2.csv'))
+return(list(table1,table2,freq1,freq2))
+}
+freqtable(dat1,'Batch_A',col1 = 'id', col2 = "Timepoints")
+freqtable(dat1,'Batch_S',col1 = 'id', col2 = "Timepoints")
+
+
+```
+##   Create Regression Model 
+###  Model 1 
+
+```{r include=FALSE}
+#step3 mixed model
+
+library(dplyr)
+dat1_trau=dat1 %>% mutate(Trauma =ifelse(Timepoints==4,1,
+               ifelse(Timepoints==10, 1,
+               ifelse(Timepoints==14, 1,0))))
+
+
+mixmodel1=function(biom,data){
+library(lmerTest)
+var.baseline=paste0('baseline_',biom)
+new=data%>%group_by(id)%>%mutate((!!var.baseline):=UQ(as.name(biom))[1])
+new_data=subset(data.frame(new),Timepoints>0)
+
+#do we need to remove biom when time=0
+fit=lmer(new_data[[biom]]~age+factor(biol_sex)+Treatment+Trauma+PTSDorNot+Treatment:PTSDorNot+new_data[[var.baseline]]+(1|id),data=new_data)
+library(sjPlot)
+tab_model(fit)
+p=summary(fit)
+return(list('p'=p,'fit'=fit))
+}
+
+
+pvec=list()
+ fitvec=list()
+for( i in biom){
+  p=mixmodel1(i,dat1_trau)$p
+  fit=mixmodel1(i,dat1_trau)$fit
+  pvec[[i]]=p
+  fitvec[[i]]=fit
+  par(mfrow=c(1,2))
+
+qqnorm(resid(fit),main=i)
+qqline(resid(fit))
+hist(resid(fit),main=i)
+print(plot(fit,main=i))
+
+}
+
+
+```
+###  Model 1  Paremeter estimates :regress on treatment,group(PTSD),trauma,baseline biomarker+random subject intercept
+```{r}
+library(sjPlot)
+
+tab_model(fitvec,dv.labels=names(fitvec),show.se = TRUE)
+#interaction not significant ,remove it 
+```
+
+
+###  Model 1 :remove interaction 
+
+```{r echo=FALSE}
+#step3 mixed model
+
+mixmodel1=function(biom,data){
+library(lmerTest)
+var.baseline=paste0('baseline_',biom)
+new=data%>%group_by(id)%>%mutate((!!var.baseline):=UQ(as.name(biom))[1])
+new_data=subset(data.frame(new),Timepoints>0)
+
+#do we need to remove biom when time=0
+fit=lmer(new_data[[biom]]~age+factor(biol_sex)+Treatment+Trauma+PTSDorNot+new_data[[var.baseline]]+(1|id),data=new_data)
+library(sjPlot)
+tab_model(fit)
+p=summary(fit)
+return(list('p'=p,'fit'=fit))
+}
+
+
+pvec=list()
+ fitvec=list()
+for( i in biom){
+  p=mixmodel1(i,dat1_trau)$p
+  fit=mixmodel1(i,dat1_trau)$fit
+  pvec[[i]]=p
+  fitvec[[i]]=fit
+ 
+
+}
+
+
+```
+```{r}
+library(sjPlot)
+
+tab_model(fitvec,dv.labels=names(fitvec),show.se = TRUE)
+
+```
+
+###  Model 2 Paremeter estimates: regress on group(PTSD), trauma script, VNS ,baseline biomarker+random subject intercept
+
+```{r include=FALSE}
+# add VNS and Trauma variable for each observation 
+# base on plasma data existing timepoints only 
+# 0  4  6  8 10 12 14 15 18 19 22 NA
+library(dplyr)
+dat1_vns=dat1 %>%mutate(VNS=ifelse(Timepoints==4,1,
+               ifelse((Timepoints/2)%%2==1,1,0)))%>% mutate(Trauma =ifelse(Timepoints==4,1,
+               ifelse(Timepoints==10, 1,
+               ifelse(Timepoints==14, 1,0))))
+
+#step3 mixed model
+
+mixmodel2=function(biom,data){
+library(lmerTest)
+var.baseline=paste0('baseline_',biom)
+new=data%>%group_by(id)%>%mutate((!!var.baseline):=UQ(as.name(biom))[1])
+new_data=subset(data.frame(new),Timepoints>0)
+
+#do we need to remove biom when time=0
+fit=lmer(new_data[[biom]]~age+factor(biol_sex)+Trauma+VNS+PTSDorNot+new_data[[var.baseline]]+(1|id),data=new_data)
+library(sjPlot)
+tab_model(fit)
+p=summary(fit)
+return(list('p'=p,'fit'=fit))
+}
+
+pvec2=list()
+ fitvec2=list()
+for( i in biom){
+  p=mixmodel2(i,dat1_vns)$p
+  fit=mixmodel2(i,dat1_vns)$fit
+  pvec2[[i]]=p
+  fitvec2[[i]]=fit
+   par(mfrow=c(1,2))
+
+qqnorm(resid(fit),main=i)
+qqline(resid(fit))
+hist(resid(fit),main=i)
+print(plot(fit,main=i))
+}
+
+
+```
+```{r}
+library(sjPlot)
+
+tab_model(fitvec2,dv.labels=names(fitvec2),show.se = TRUE)
+```
+
+###  Model 2 :add VNS:PTSD interaction 
+```{r echo=FALSE}
+#step3 mixed model
+
+mixmodel2=function(biom,data){
+library(lmerTest)
+var.baseline=paste0('baseline_',biom)
+new=data%>%group_by(id)%>%mutate((!!var.baseline):=UQ(as.name(biom))[1])
+new_data=subset(data.frame(new),Timepoints>0)
+
+#do we need to remove biom when time=0
+fit=lmer(new_data[[biom]]~age+factor(biol_sex)+Trauma+VNS+PTSDorNot+VNS:PTSDorNot+new_data[[var.baseline]]+(1|id),data=new_data)
+library(sjPlot)
+tab_model(fit)
+p=summary(fit)
+return(list('p'=p,'fit'=fit))
+}
+
+pvec2=list()
+ fitvec2=list()
+for( i in biom){
+  p=mixmodel2(i,dat1_vns)$p
+  fit=mixmodel2(i,dat1_vns)$fit
+  pvec2[[i]]=p
+  fitvec2[[i]]=fit
+   par(mfrow=c(1,2))
+
+
+}
+
+```
+```{r}
+library(sjPlot)
+
+tab_model(fitvec2,dv.labels=names(fitvec2),show.se = TRUE)
+```
+

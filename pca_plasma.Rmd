@@ -1,0 +1,127 @@
+---
+title: "pca_plasma"
+author: "YI XIAO"
+date: "3/4/2019"
+output: html_document
+---
+
+```{r}
+plasma=read.csv('/Users/xiaoyi/Documents/2018Fall/Clinical/PTSD/plasma.csv',na.strings=c("","NA"))
+
+col=c("id","Timepoints","PTSDorNot","Treatment",  "age" , "biol_sex", grep("Mean",colnames(plasma),value = TRUE))
+#prepare data
+dat1=plasma[,col]
+colnames(dat1)
+biomvec=grep("Mean",colnames(plasma),value = TRUE)
+options(scipen=10000)
+#
+#RECODE  the 1,0 into PTSD active 
+#dat1$Group=ifelse(dat1$PTSDorNot==1,'PTSD','non-PTSD')
+#dat1$Treatment_new=ifelse(dat1$Treatment==1,'active','sham')
+#dat1$PTSDorNot=factor(dat1$PTSDorNot)
+#col1,col2 combination to split data 
+
+
+```
+
+#create a dataset impute zero and log 
+```{r}
+
+data=dat1
+for (biom in biomvec){
+  ind=which(data[[biom]]<=0&!is.na(data[[biom]]),arr.ind=TRUE)
+data[[biom]][ind]=(1/2)*min(data[[biom]][data[[biom]]!=0],na.rm = TRUE)
+data[[paste0('log_',biom)]]=log(data[[biom]])
+
+}
+
+```
+
+```{r}
+ library(visdat)
+vis_miss(data)
+```
+
+```{r}
+data_baseline=data[data$Timepoints==0&!is.na(data$Timepoints),]
+bio.mat=data_baseline[,paste0('log_',biomvec)]
+vis_miss(bio.mat)
+demo.mat=data_baseline[,-grep('Mean',colnames(data_baseline))]
+
+```
+```{r}
+vis_miss(demo.mat)
+```
+
+#deal with missing with remove or impute
+```{r}
+#one method : remove na 
+ na.omit(bio.mat)->bio.na.omit
+#two method:mean
+impute.mean<-function(data){
+for(i in 1:ncol(data)){
+  data[is.na(data[,i]), i] <- mean(data[,i], na.rm = TRUE)
+}
+  return(data)
+}
+impute.mean(bio.mat)->bio.na.mean
+```
+
+
+## impute
+```{r}
+
+bio.pca=prcomp(bio.na.omit,
+                 center = TRUE,
+                 scale. = TRUE)
+plot(bio.pca,type = "l")
+```
+
+```{r}
+head(bio.pca)
+```
+```{r}
+VE <- bio.pca$sdev^2
+PVE <- VE / sum(VE)
+round(PVE, 2)
+```
+```{r}
+plot(bio.pca$x[, 1:2],col=c(1,2))
+```
+
+
+##rm all data with na in both demo&biomarker 
+
+```{r}
+na.omit(data_baseline)->data_baseline.omit
+bio.mat=data_baseline.omit[,paste0('log_',biomvec)]
+demo.mat=data_baseline.omit[,-grep('Mean',colnames(data_baseline))]
+bio.pca=prcomp(bio.mat,
+                 center = TRUE,
+                 scale. = TRUE)
+plot(bio.pca,type = "l")
+```
+
+
+```{r}
+VE <- bio.pca$sdev^2
+PVE <- VE / sum(VE)
+round(PVE, 2)
+```
+
+```{r}
+biplot(bio.pca)
+```
+
+
+
+```{r}
+pcr.fit = lm(bio.pca$x[,1] ~ .,data=demo.mat) 
+summary(pcr.fit)
+
+```
+
+
+
+
+

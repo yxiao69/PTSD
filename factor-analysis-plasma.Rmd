@@ -1,0 +1,78 @@
+---
+title: ""
+author: "FACTOR-ANALYSIS-plasma"
+date: "3/8/2019"
+output: html_document
+---
+
+### FACTOR ANALYSIS 
+https://www.statmethods.net/advstats/factor.html
+http://www.di.fc.ul.pt/~jpn/r/factoranalysis/factoranalysis.html#factor-analysis-vs.pca
+
+```{r}
+plasma=read.csv('/Users/xiaoyi/Documents/2018Fall/Clinical/PTSD/plasma.csv',na.strings=c("","NA"))
+
+col=c("id","Timepoints","PTSDorNot","Treatment",  "age" , "biol_sex", grep("Mean",colnames(plasma),value = TRUE))
+#prepare data
+dat1=plasma[,col]
+colnames(dat1)
+biomvec=grep("Mean",colnames(plasma),value = TRUE)
+options(scipen=10000)
+```
+
+```{r}
+
+data=dat1
+for (biom in biomvec){
+  ind=which(data[[biom]]<=0&!is.na(data[[biom]]),arr.ind=TRUE)
+data[[biom]][ind]=(1/2)*min(data[[biom]][data[[biom]]!=0],na.rm = TRUE)
+data[[paste0('log_',biom)]]=log(data[[biom]])
+
+}
+
+```
+
+```{r}
+data_baseline=data[data$Timepoints==0&!is.na(data$Timepoints),]
+na.omit(data_baseline)->data_baseline.omit
+bio.mat=data_baseline.omit[,paste0('log_',biomvec)]
+demo.mat=data_baseline.omit[,-grep('Mean',colnames(data_baseline))]
+
+```
+
+
+
+```{r}
+library(psych)
+
+fa.pca <- fa(r = cor(bio.mat), nfactors = 3, rotate = "oblimin", fm = "pa")
+gsub('log_|_Mean','',colnames(bio.mat))->new.col
+colnames(bio.mat)<-new.col
+plot(fa.pca,labels=names(bio.mat),cex=.7, ylim=c(-.1,1)) 
+```
+# look at the loadings , the larger the absolute value, the more this variable explain in this PC
+```{r}
+fa.pca
+```
+
+```{r}
+library(nFactors)
+ev <- eigen(cor(bio.mat)) # get eigenvalues
+ap <- parallel(subject=nrow(bio.mat),var=ncol(bio.mat), rep=100, cent=.05)
+nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)
+plotnScree(nS)
+```
+
+```{r}
+fit <- principal(bio.mat, nfactors=3, rotate="oblimin")
+fit$scores
+fit$loadings
+```
+
+```{r}
+##?question:how to deal with id ?
+## id is not needed because lmm must have repeative measurement on same subject, this baseline only have one.
+pcr.fit.ex = lm(fit$scores[,1] ~ PTSDorNot+Treatment+age+ biol_sex,data=demo.mat) 
+summary(pcr.fit.ex)
+
+```
