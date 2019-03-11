@@ -2,7 +2,7 @@
 title: "Plasma Analysis on PTSD Project"
 author: "YI XIAO"
 date: "1/17/2019"
-output: html_document
+output: rmarkdown::github_document
  
 ---
 
