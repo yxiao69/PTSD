@@ -13,6 +13,6 @@ This a clinical trial project to evaluate the effect of Vagal Nerve Stimulation 
 - Checked missing pattern of all biomarker and impute missing value
 - Conducted PCA on all biomarker at baseline,extract PC1, PC2, PC3 regressed on covariates above
 
-## Exploratory factor analysis 
+## Exploratory Factor Analysis 
 
 - Screen test to decide  the number of factor to extract 
