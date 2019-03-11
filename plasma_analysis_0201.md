@@ -72,6 +72,7 @@ library(dplyr)
 
 ``` r
 library(knitr)
+options(knitr.table.format = 'markdown')
 #check demographic variable for each subject (not for each observaion)
 dat1_subject=dat1[!duplicated(dat1$id), ]
 table1::table1(~age+biol_sex+PTSDorNot+ethnicity_id+bmi+education+marital_status |Treatment_new,data=dat1_subject)
@@ -81,6 +82,7 @@ table1::table1(~age+biol_sex+PTSDorNot+ethnicity_id+bmi+education+marital_status
 
 ``` r
 #check biomarker baseline level for active/sham
+options(knitr.table.format = 'markdown')
 dat1_baseline=dat1%>%filter(Timepoints==0)
 
 table1::table1(~BDNF_Mean+IFNgamma_Mean+IL1beta_Mean+IL2_Mean+IL6_Mean+TNFa_Mean+Ghrelin_Mean+IL12p70_Mean+IL13_Mean+IL22_Mean+IL5_Mean+MIF_Mean |Treatment_new,data=dat1_baseline)
