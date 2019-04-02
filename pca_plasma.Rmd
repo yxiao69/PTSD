@@ -2,7 +2,7 @@
 title: "pca_plasma"
 author: "YI XIAO"
 date: "3/4/2019"
-output: html_document
+output:  rmarkdown::github_document
 ---
 
 ```{r}

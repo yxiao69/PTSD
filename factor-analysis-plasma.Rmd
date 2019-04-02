@@ -2,7 +2,7 @@
 title: ""
 author: "FACTOR-ANALYSIS-plasma"
 date: "3/8/2019"
-output: html_document
+output: rmarkdown::github_document
 ---
 
 ### FACTOR ANALYSIS 
